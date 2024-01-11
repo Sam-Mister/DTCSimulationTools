@@ -18,5 +18,11 @@ from TimeEvolver import SystemOperators
 Np = 5 #Number of Periods 
 TimeStep = 0.1
 
-Time, Results = TimeEvolver(Np,TimeStep)
+Time, Rho = TimeEvolver(Np,TimeStep)
 Hz,Hx,LZ,LX = SystemOperators()
+
+'''
+Now we have an array of time steps, an array of density operators at each time step,
+and static Qobjs for the Hamiltonians and the Liouvillians.
+'''
+
