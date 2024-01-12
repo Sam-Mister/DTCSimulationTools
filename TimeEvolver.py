@@ -45,7 +45,7 @@ needed to evolve the system. Thus I construct a function that takes these object
 with a few additional things, and returns the time evolution of the state.
 '''
 def SystemOperators():
-    return Hz,Hx,LZ,LX
+    return Hz,Hx,LZ,LX,Sx, Sz, Sy
 
 def TimeEvolver(Np,TimeStep):
     Tz = 1 #time for z evolution
