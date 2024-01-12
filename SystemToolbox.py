@@ -19,7 +19,7 @@ def PauliN(N): #define SigmaX and SigmaZ for N spin system
     return Sx, Sz, Sy
 
 # Next the disordered parameters are needed to build the hamiltonian
-
+np.random.seed(45)
 def disorderGen(Jmean,Jvar,hmean,hvar,N): # Generates the unifrom distributions for sampling the parameters
     Jarr = [Jmean + np.random.uniform(-Jvar/2,Jvar/2) for i in range(N-1)]
     harr =[hmean + np.random.uniform(-hvar/2,hvar/2) for i in range(N)]  #[np.pi for i in range(N)] 

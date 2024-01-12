@@ -14,14 +14,14 @@ import matplotlib.pyplot as plt
 #Parameters for the closed system
 NumberOfSpins = 2
 Jmean = np.pi/2
-Jvar = 0
+Jvar = 0.5
 hmean = np.pi
-hvar = 0.5
+hvar = 0.01
 ExternalFieldStength = 0
 
 #Bath parameters 
 s = 1 #This corresponds to an ohmic bath 
-G = 1 # This parameter represents the system bath coupling strength
+G = 0.1 # This parameter represents the system bath coupling strength
 B = 1 # This is the inverse temperature of the bath 
 
 Sx, Sz, Sy = PauliN(NumberOfSpins)
