@@ -81,6 +81,7 @@ def ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx):
         VectorisedState = qu.operator_to_vector(Rho[i])
         DotRho.append(qu.vector_to_operator(Llist[i]*VectorisedState))
         LogRhoArr.append(qu.Qobj(linalg.logm(Rho[i].full()),DimData,ShapeData))
+        
         #Calculate the elements of the thermodynamic rates
         DotQ.append((Hlist[i]*DotRho[i]).tr().real)
         DotW.append((DotH[i]*Rho[i]).tr().real)
@@ -88,6 +89,23 @@ def ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx):
         DotS.append(-(DotRho[i]*LogRhoArr[i]).tr().real)
         
     return TimeCrystalSignature,DotQ, DotW, DotU, DotS
+'''
+These two functions form a simple integration routine. Here I have used the most
+basic integral approximation for simplicity as to help deal with the shapnedd of the 
+work derivative 
+'''
+def approxintegral(Arr,Time,dt):
+    res = 0
+    for i in range(len(Time)):
+        res += Arr[i]*dt
+    return res
+
+def IntegrationRoutine(Time,Arr,a0): 
+    dt = Time[1]-Time[0]
+    ApproxInt = []
+    for i in range(len(Time)):
+        ApproxInt.append(a0 + approxintegral(Arr[:i],Time[:i],dt))
+    return ApproxInt
 
 def PlottingWrapper(xArr,yArr,xlbl,ylbl):
     T = 2
@@ -97,9 +115,15 @@ def PlottingWrapper(xArr,yArr,xlbl,ylbl):
     plt.show()
     return
 
+def AbslistDifference(Arr1,Arr2):
+    NewList = []
+    for i in range(len(Arr1)):
+        NewList.append(abs(Arr1[i] - Arr2[i]))
+    return NewList
+
 if __name__ == "__main__":
     Np = 6 #Number of Periods 
-    TimeStep = 0.01
+    TimeStep = 0.001
     Time, Rho = TimeEvolver(Np,TimeStep)
     Hz,Hx,LZ,LX,Sx, Sz, Sy = SystemOperators()
     TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
@@ -109,3 +133,30 @@ if __name__ == "__main__":
     PlottingWrapper(Time,DotW,"t/T",r"$\dot{W}(t)$")
     PlottingWrapper(Time,DotU,"t/T",r"$\dot{U}(t)$")
     PlottingWrapper(Time,DotS,"t/T",r"$\dot{S}(t)$")
+    
+    '''
+    To verify that the previous integration routine makes sense to some degree
+    I can calculate the change of internal energy and entropy via a different route 
+    and compare the results
+    
+    Delta(U) = tr(H*rho)
+    Delta(S) = -tr(rho*ln(rho))
+    '''
+    EntropyTestArr = []
+    EnergyTestArr = []
+    for i in range(len(Rho)):
+        EntropyTestArr.append(qu.entropy_vn(Rho[i])-qu.entropy_vn(Rho[0]))
+        EnergyTestArr.append((TimeDependence(Hz,Hx,Time[i])*Rho[i]).tr() - (TimeDependence(Hz,Hx,Time[0])*Rho[0]).tr())
+    
+    DeltaQ = IntegrationRoutine(Time,DotQ,0)
+    DeltaW = IntegrationRoutine(Time,DotW,0)
+    DeltaU= IntegrationRoutine(Time,DotU,0)
+    DeltaS = IntegrationRoutine(Time,DotS,0)
+    
+    PlottingWrapper(Time,DeltaQ,"t/T",r"$\Delta Q(t)$")
+    PlottingWrapper(Time,DeltaW,"t/T",r"$\Delta W(t)$")
+    PlottingWrapper(Time,DeltaU,"t/T",r"$\Delta U(t)$")
+    PlottingWrapper(Time,DeltaS,"t/T",r"$\Delta S(t)$")
+    
+    PlottingWrapper(Time,AbslistDifference(DeltaS,EntropyTestArr),"t/T","Error in S")
+    PlottingWrapper(Time,AbslistDifference(DeltaU,EnergyTestArr),"t/T","Error in U")
