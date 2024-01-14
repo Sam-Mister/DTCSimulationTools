@@ -12,6 +12,13 @@ and the dissipation operators gives us the required information to calculate the
 thermodynamic properties 
 '''
 
+'''
+The required parameters from the highest level of simulation will be provided in a 
+dictionary and passed along. Closed system parameters listed first, then bath parameters
+For example considering the following
+'''
+params = {"NumSpins":5, "Jmean":1, "Jvar":0.5, "hmean":3, "ExternalField":0, "s":1,"G":0.1,"B":1}
+
 from TimeEvolver import TimeEvolver
 from TimeEvolver import SystemOperators
 from scipy import linalg
@@ -123,7 +130,7 @@ def AbslistDifference(Arr1,Arr2):
 
 if __name__ == "__main__":
     Np = 6 #Number of Periods 
-    TimeStep = 0.001
+    TimeStep = 0.01
     Time, Rho = TimeEvolver(Np,TimeStep)
     Hz,Hx,LZ,LX,Sx, Sz, Sy = SystemOperators()
     TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
@@ -160,3 +167,11 @@ if __name__ == "__main__":
     
     PlottingWrapper(Time,AbslistDifference(DeltaS,EntropyTestArr),"t/T","Error in S")
     PlottingWrapper(Time,AbslistDifference(DeltaU,EnergyTestArr),"t/T","Error in U")
+    
+    '''
+    Not I want to be able to look at the integrated quantities over different periods of the evolution
+    This routine should take a given set of system parameters and a period of interest
+    then return the intergrated values
+    '''
+    
+    
