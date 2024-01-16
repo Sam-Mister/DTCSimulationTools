@@ -17,7 +17,7 @@ The required parameters from the highest level of simulation will be provided in
 dictionary and passed along. Closed system parameters listed first, then bath parameters
 For example considering the following
 '''
-params = {"NumSpins":5, "Jmean":1, "Jvar":0.5, "hmean":3,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.1,"B":1}
+
 
 from TimeEvolver import TimeEvolver
 from TimeEvolver import SystemOperators
@@ -25,7 +25,8 @@ from scipy import linalg
 import qutip as qu
 import matplotlib.pyplot as plt
 import numpy as np
-
+import time
+Standardparams = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
 '''
 Now we have an array of time steps, an array of density operators at each time step,
 and static Qobjs for the Hamiltonians and the Liouvillians.
@@ -150,6 +151,7 @@ def IntergratedProperties(Tag,start,stop,inc,params):
     SweepArr = np.arange(start,stop,inc)
     N = len(SweepArr)
     for i in range(N):
+        t0 = time.time()
         print('Loop {}/{}'.format(i+1,N))
         params[Tag] = SweepArr[i]
         
@@ -157,10 +159,14 @@ def IntergratedProperties(Tag,start,stop,inc,params):
         MidIndex = int(Np/2)
         FinalIndex = Np-1
         TimeStep = 0.01
-        Time, Rho = TimeEvolver(Np,TimeStep,params)
-        PeriodEnd = int(len(Time)/Np - 1) 
-        StepAmount = int(len(Time)/Np) 
+       
         Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
+        print('Generating Initial State')
+        psi0 = InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+        print('Initial State Generated')
+        Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
+        PeriodEnd = int(len(Time)/Np - 1) 
+        StepAmount = int(len(Time)/Np)
         TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
     
         DeltaQ = IntegrationRoutine(Time,DotQ,0)
@@ -182,13 +188,21 @@ def IntergratedProperties(Tag,start,stop,inc,params):
         FirstPeriodEntropy.append(DeltaS[PeriodEnd] - DeltaS[0])
         MiddlePeriodEntropy.append(DeltaS[MidIndex*StepAmount+PeriodEnd] - DeltaS[MidIndex*StepAmount])
         EndPeriodEntropy.append(DeltaS[FinalIndex*StepAmount+PeriodEnd] - DeltaS[FinalIndex*StepAmount])
-        
-        HeatChangeArr = [FirstPeriodHeat,MiddlePeriodHeat,EndPeriodHeat]
-        WorkChangeArr = [FirstPeriodWork,MiddlePeriodWork,EndPeriodWork]
-        EnergyChangeArr = [FirstPeriodEnergy,MiddlePeriodEnergy,EndPeriodEnergy]
-        EntropyChangeArr = [FirstPeriodEntropy,MiddlePeriodEntropy,EndPeriodEntropy]
+        t1 = time.time()
+        print('This loop took {:.2}mins'.format((t1-t0)/60))
+        print('Approx {:.2} mins left'.format(((N-(i+1))*(t1-t0))/60))
+    HeatChangeArr = [FirstPeriodHeat,MiddlePeriodHeat,EndPeriodHeat]
+    WorkChangeArr = [FirstPeriodWork,MiddlePeriodWork,EndPeriodWork]
+    EnergyChangeArr = [FirstPeriodEnergy,MiddlePeriodEnergy,EndPeriodEnergy]
+    EntropyChangeArr = [FirstPeriodEntropy,MiddlePeriodEntropy,EndPeriodEntropy]
         
     return SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr
+
+def InitialStateGenerator(params):
+    psi0 = qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+    Time, Rho = TimeEvolver(8,0.1,psi0,params)
+    Init = Rho[-1]
+    return Init
 
 if __name__ == "__main__":
     '''
@@ -196,14 +210,27 @@ if __name__ == "__main__":
     dictionary and passed along. Closed system parameters listed first, then bath parameters
     For example considering the following
     '''
-    params = {"NumSpins":5, "Jmean":1, "Jvar":0.5, "hmean":3,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.1,"B":1}
+    params = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.5, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.5,"B":1}
     
     Np = 8 #Number of Periods 
     TimeStep = 0.01
     T = params["Tz"] + params["Tx"]
-    Time, Rho = TimeEvolver(Np,TimeStep,params)
+    
+    print('Generating Initial State')
+    psi0 = InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+    print('Initial State Generated')
+    print('--------------')
     Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
+    psi0Therm = (-params["B"]*Hz).expm()/((-params["B"]*Hz).expm()).tr()
+    print('Evolving the system')
+    Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
+    print('System Evolved')
+    print('--------------')
+    
+    print('Calculating Thrmodynamic Rates')
     TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
+    print('Done')
+    print('--------------')
     
     PlottingWrapper(Time/T,TimeCrystalSignature,"t/T",r"$\langle \sigma_{1}^{x}(t)\rangle$")
     PlottingWrapper(Time/T,DotQ,"t/T",r"$\dot{Q}(t)$")
@@ -224,11 +251,13 @@ if __name__ == "__main__":
     for i in range(len(Rho)):
         EntropyTestArr.append(qu.entropy_vn(Rho[i])-qu.entropy_vn(Rho[0]))
         EnergyTestArr.append((TimeDependence(Hz,Hx,Time[i])*Rho[i]).tr() - (TimeDependence(Hz,Hx,Time[0])*Rho[0]).tr())
-    
+    print('Calculating Integrated Quantities')
     DeltaQ = IntegrationRoutine(Time,DotQ,0)
     DeltaW = IntegrationRoutine(Time,DotW,0)
     DeltaU= IntegrationRoutine(Time,DotU,0)
     DeltaS = IntegrationRoutine(Time,DotS,0)
+    print('Done')
+    print('--------------')
     
     PlottingWrapper(Time/T,DeltaQ,"t/T",r"$\Delta Q(t)$")
     PlottingWrapper(Time/T,DeltaW,"t/T",r"$\Delta W(t)$")
@@ -243,8 +272,9 @@ if __name__ == "__main__":
     This routine should take a given set of system parameters and a period of interest
     then return the intergrated values
     '''
-    
-    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties("G",0.000001,2.01,0.01,params)
+    '''
+    print('Begin looping over different enviroment coupling strengths')
+    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties("G",0.000001,2.01,0.05,params)
     
     PlottingWrapper(SweepArr,HeatChangeArr[0],r"$\Gamma$",r"$\Delta Q$")
     PlottingWrapper(SweepArr,WorkChangeArr[0],r"$\Gamma$",r"$\Delta W$")
@@ -260,3 +290,4 @@ if __name__ == "__main__":
     PlottingWrapper(SweepArr,WorkChangeArr[2],r"$\Gamma$",r"$\Delta W$")
     PlottingWrapper(SweepArr,EnergyChangeArr[2],r"$\Gamma$",r"$\Delta U$")
     PlottingWrapper(SweepArr,EntropyChangeArr[2],r"$\Gamma$",r"$\Delta S$")
+    '''

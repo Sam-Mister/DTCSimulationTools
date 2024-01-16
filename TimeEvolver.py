@@ -22,7 +22,7 @@ def SystemOperators(params):
 
     Sx, Sz, Sy = PauliN(params["NumSpins"])
 
-    Jarr, harr = disorderGen(params["Jmean"],params["Jvar"],params["hmean"],params["hvar"],params["NumSpins"])
+    Jarr, harr = disorderGen(params["Jmean"],params["Jvar"],params["hmean"],params["hvar"],params["NumSpins"],params["seed"])
 
     Hz,Hx = HamiltonianGenerator(Jarr, harr, params["ExternalField"], Sx, Sz)
     
@@ -33,15 +33,14 @@ def SystemOperators(params):
     LX,LZ = GeneralGlobalME(Hx,Hz,params["s"],params["G"],params["B"],VAll)
     return Hz,Hx,LZ,LX,Sx, Sz, Sy
 
-def TimeEvolver(Np,TimeStep,params):
+def TimeEvolver(Np,TimeStep,psi0,params):
     Hz,Hx,LZ,LX,Sx, Sz, Sy = SystemOperators(params)
     T = params["Tz"] + params["Tx"]
     
     TotalTime = np.arange(0,Np*(T),TimeStep)
     TzTime = np.arange(0,params["Tz"],TimeStep)
     TxTime = np.arange(0,params["Tx"],TimeStep)
-    psi0Therm = (-params["B"]*Hz).expm()/((-params["B"]*Hz).expm()).tr()
-    psi0 = psi0Therm#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+    
     States = []
     for i in range(Np):
         output = qu.mesolve(Hz, psi0, TzTime,LZ,[])# Evolve for the Hz period 
