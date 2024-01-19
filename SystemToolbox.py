@@ -24,7 +24,6 @@ def disorderGen(Jmean,Jvar,hmean,hvar,N,seed): # Generates the unifrom distribut
     np.random.seed(seed)
     Jarr = [Jmean + np.random.uniform(-Jvar/2,Jvar/2) for i in range(N-1)]
     harr =[hmean + np.random.uniform(-hvar/2,hvar/2) for i in range(N)]  #[np.pi for i in range(N)] 
-    print(Jarr)
     return Jarr, harr 
 
 #The system Hamiltonions can now be generated

@@ -26,7 +26,8 @@ import qutip as qu
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-Standardparams = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
+from scipy import integrate
+Standardparams = {"seed":42,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
 '''
 Now we have an array of time steps, an array of density operators at each time step,
 and static Qobjs for the Hamiltonians and the Liouvillians.
@@ -109,12 +110,16 @@ def approxintegral(Arr,Time,dt):
         res += Arr[i]*dt
     return res
 
-def IntegrationRoutine(Time,Arr,a0): 
+def IntegrationRoutine(Time,Arr,a0,params): 
+    T = params["Tz"] + params["Tx"]
     dt = Time[1]-Time[0]
-    ApproxInt = []
-    for i in range(len(Time)):
-        ApproxInt.append(a0 + approxintegral(Arr[:i],Time[:i],dt))
-    return ApproxInt
+    StepSamples = int(T/dt)
+    Ptime = np.arange(0,Time[-1]+T,T)
+    ApproxInt = [0]
+    for i in range(1,len(Ptime)):
+        ApproxInt.append(a0 + integrate.trapezoid(Arr[:(i*StepSamples-1)], Time[:(i*StepSamples-1)]))
+        #ApproxInt.append(a0 + approxintegral(Arr[:i],Time[:i],dt))
+    return Ptime, ApproxInt
 
 def PlottingWrapper(xArr,yArr,xlbl,ylbl):
     plt.plot(xArr,yArr)
@@ -158,36 +163,36 @@ def IntergratedProperties(Tag,start,stop,inc,params):
         Np = 8 #Number of Periods 
         MidIndex = int(Np/2)
         FinalIndex = Np-1
-        TimeStep = 0.01
+        TimeStep = 0.0005
        
         Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
         print('Generating Initial State')
-        psi0 = InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+        psi0 = qu.qload('limitstate')#InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
         print('Initial State Generated')
         Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
         PeriodEnd = int(len(Time)/Np - 1) 
         StepAmount = int(len(Time)/Np)
         TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
     
-        DeltaQ = IntegrationRoutine(Time,DotQ,0)
-        FirstPeriodHeat.append(DeltaQ[PeriodEnd] - DeltaQ[0])
-        MiddlePeriodHeat.append(DeltaQ[MidIndex*StepAmount+PeriodEnd] - DeltaQ[MidIndex*StepAmount])
-        EndPeriodHeat.append(DeltaQ[FinalIndex*StepAmount+PeriodEnd] - DeltaQ[FinalIndex*StepAmount])
+        PTime,DeltaQ = IntegrationRoutine(Time,DotQ,0,params)
+        FirstPeriodHeat.append(DeltaQ[1] - DeltaQ[0])
+        MiddlePeriodHeat.append(DeltaQ[MidIndex+1] - DeltaQ[MidIndex])
+        EndPeriodHeat.append(DeltaQ[FinalIndex+1] - DeltaQ[FinalIndex])
         
-        DeltaW = IntegrationRoutine(Time,DotW,0)
-        FirstPeriodWork.append(DeltaW[PeriodEnd] - DeltaW[0])
-        MiddlePeriodWork.append(DeltaW[MidIndex*StepAmount+PeriodEnd] - DeltaW[MidIndex*StepAmount])
-        EndPeriodWork.append(DeltaW[FinalIndex*StepAmount+PeriodEnd] - DeltaW[FinalIndex*StepAmount])
+        PTime,DeltaW = IntegrationRoutine(Time,DotW,0,params)
+        FirstPeriodWork.append(DeltaW[1] - DeltaW[0])
+        MiddlePeriodWork.append(DeltaW[MidIndex+1] - DeltaW[MidIndex])
+        EndPeriodWork.append(DeltaW[FinalIndex+1] - DeltaW[FinalIndex])
         
-        DeltaU= IntegrationRoutine(Time,DotU,0)
-        FirstPeriodEnergy.append(DeltaU[PeriodEnd] - DeltaU[0])
-        MiddlePeriodEnergy.append(DeltaU[MidIndex*StepAmount+PeriodEnd] - DeltaU[MidIndex*StepAmount])
-        EndPeriodEnergy.append(DeltaU[FinalIndex*StepAmount+PeriodEnd] - DeltaU[FinalIndex*StepAmount])
+        PTime,DeltaU= IntegrationRoutine(Time,DotU,0,params)
+        FirstPeriodEnergy.append(DeltaU[1] - DeltaU[0])
+        MiddlePeriodEnergy.append(DeltaU[MidIndex+1] - DeltaU[MidIndex])
+        EndPeriodEnergy.append(DeltaU[FinalIndex+1] - DeltaU[FinalIndex])
         
-        DeltaS = IntegrationRoutine(Time,DotS,0)  
-        FirstPeriodEntropy.append(DeltaS[PeriodEnd] - DeltaS[0])
-        MiddlePeriodEntropy.append(DeltaS[MidIndex*StepAmount+PeriodEnd] - DeltaS[MidIndex*StepAmount])
-        EndPeriodEntropy.append(DeltaS[FinalIndex*StepAmount+PeriodEnd] - DeltaS[FinalIndex*StepAmount])
+        PTime,DeltaS = IntegrationRoutine(Time,DotS,0,params)  
+        FirstPeriodEntropy.append(DeltaS[1] - DeltaS[0])
+        MiddlePeriodEntropy.append(DeltaS[MidIndex+1] - DeltaS[MidIndex])
+        EndPeriodEntropy.append(DeltaS[FinalIndex+1] - DeltaS[FinalIndex])
         t1 = time.time()
         print('This loop took {:.2}mins'.format((t1-t0)/60))
         print('Approx {:.2} mins left'.format(((N-(i+1))*(t1-t0))/60))
@@ -204,24 +209,37 @@ def InitialStateGenerator(params):
     Init = Rho[-1]
     return Init
 
+def CoherenceRemover(Qobj):
+    dimentions = Qobj.dims
+    shape = Qobj.shape
+    data = Qobj.full()
+    N = data.shape[0]
+    for i in range(N):
+        for j in range(N):
+            if i !=j:
+                data[i,j] = 0 
+    NewObj = qu.Qobj(data,dimentions,shape)
+    return NewObj
+
 if __name__ == "__main__":
     '''
     The required parameters from the highest level of simulation will be provided in a 
     dictionary and passed along. Closed system parameters listed first, then bath parameters
     For example considering the following
     '''
-    params = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.5, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.5,"B":1}
+    params = {"seed":42,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.5, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":2,"B":1}
     
     Np = 8 #Number of Periods 
-    TimeStep = 0.01
+    TimeStep = 0.0005
     T = params["Tz"] + params["Tx"]
     
     print('Generating Initial State')
     psi0 = InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+    qu.qsave(psi0, 'limitstate')
     print('Initial State Generated')
     print('--------------')
     Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
-    psi0Therm = (-params["B"]*Hz).expm()/((-params["B"]*Hz).expm()).tr()
+    psi0Therm = (-params["B"]*Hx).expm()/((-params["B"]*Hx).expm()).tr()
     print('Evolving the system')
     Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
     print('System Evolved')
@@ -252,29 +270,33 @@ if __name__ == "__main__":
         EntropyTestArr.append(qu.entropy_vn(Rho[i])-qu.entropy_vn(Rho[0]))
         EnergyTestArr.append((TimeDependence(Hz,Hx,Time[i])*Rho[i]).tr() - (TimeDependence(Hz,Hx,Time[0])*Rho[0]).tr())
     print('Calculating Integrated Quantities')
-    DeltaQ = IntegrationRoutine(Time,DotQ,0)
-    DeltaW = IntegrationRoutine(Time,DotW,0)
-    DeltaU= IntegrationRoutine(Time,DotU,0)
-    DeltaS = IntegrationRoutine(Time,DotS,0)
+    PTime, DeltaQ = IntegrationRoutine(Time,DotQ,0,params)
+    PTime,DeltaW = IntegrationRoutine(Time,DotW,0,params)
+    PTime,DeltaU= IntegrationRoutine(Time,DotU,0,params)
+    PTime, DeltaS = IntegrationRoutine(Time,DotS,0,params)
     print('Done')
     print('--------------')
     
-    PlottingWrapper(Time/T,DeltaQ,"t/T",r"$\Delta Q(t)$")
-    PlottingWrapper(Time/T,DeltaW,"t/T",r"$\Delta W(t)$")
-    PlottingWrapper(Time/T,DeltaU,"t/T",r"$\Delta U(t)$")
-    PlottingWrapper(Time/T,DeltaS,"t/T",r"$\Delta S(t)$")
+    PlottingWrapper(PTime/T,DeltaQ,"t/T",r"$\Delta Q(t)$")
+    PlottingWrapper(PTime/T,DeltaW,"t/T",r"$\Delta W(t)$")
+    PlottingWrapper(PTime/T,DeltaU,"t/T",r"$\Delta U(t)$")
+    PlottingWrapper(PTime/T,DeltaS,"t/T",r"$\Delta S(t)$")
     
-    PlottingWrapper(Time/T,AbslistDifference(DeltaS,EntropyTestArr),"t/T","Error in S")
-    PlottingWrapper(Time/T,AbslistDifference(DeltaU,EnergyTestArr),"t/T","Error in U")
+    plt.plot(PTime/T,DeltaS,'o')
+    plt.plot(Time/T,EntropyTestArr)
+    plt.show()
     
+    plt.plot(PTime/T,DeltaU,'o')
+    plt.plot(Time/T,EnergyTestArr,'x')
+    plt.show()
     '''
     Not I want to be able to look at the integrated quantities over different periods of the evolution
     This routine should take a given set of system parameters and a period of interest
     then return the intergrated values
     '''
-    '''
+    
     print('Begin looping over different enviroment coupling strengths')
-    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties("G",0.000001,2.01,0.05,params)
+    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties("G",0.000001,3.01,0.5,params)
     
     PlottingWrapper(SweepArr,HeatChangeArr[0],r"$\Gamma$",r"$\Delta Q$")
     PlottingWrapper(SweepArr,WorkChangeArr[0],r"$\Gamma$",r"$\Delta W$")
@@ -290,4 +312,22 @@ if __name__ == "__main__":
     PlottingWrapper(SweepArr,WorkChangeArr[2],r"$\Gamma$",r"$\Delta W$")
     PlottingWrapper(SweepArr,EnergyChangeArr[2],r"$\Gamma$",r"$\Delta U$")
     PlottingWrapper(SweepArr,EntropyChangeArr[2],r"$\Gamma$",r"$\Delta S$")
+    
+    
     '''
+    Now I will calculate the analytic expressions for the large gamma limit. To do this I need the thermal state of Hx, this state with not coherence in the 
+    z basis and the hamiltonions Hx,Hz
+    '''
+    
+    rho_infty = psi0Therm
+    rho_inftyZ = CoherenceRemover(rho_infty)
+    
+    WorkLimit = ((Hz-Hx)*(rho_infty-rho_inftyZ)).tr()
+    HeatLimit = -WorkLimit
+    EnergyLimit = 0
+    EntropyLimit = qu.entropy_relative(rho_infty,rho_inftyZ)+ qu.entropy_relative(rho_inftyZ,rho_infty)
+    
+    print(WorkLimit)
+    print(HeatLimit)
+    print(EnergyLimit)
+    print(EntropyLimit)
