@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 from scipy import integrate
-Standardparams = {"seed":42,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
+Standardparams = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
 '''
 Now we have an array of time steps, an array of density operators at each time step,
 and static Qobjs for the Hamiltonians and the Liouvillians.
@@ -74,6 +74,7 @@ def ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx):
     for i in range(NumberofSteps-1):
         DotH.append((TimeDependence(Hz,Hx,Time[i+1]) - TimeDependence(Hz,Hx,Time[i]))/TimeStep)
     DotH.append((Hz-Hx)/TimeStep) #The last element of the derivative has to be calculated separatly 
+    
     #Initialise empty arrays 
     TimeCrystalSignature = []
     DotRho = []
@@ -111,6 +112,7 @@ def approxintegral(Arr,Time,dt):
     return res
 
 def IntegrationRoutine(Time,Arr,a0,params): 
+    #This routine calculates the integrated properties at integer multiples of T
     T = params["Tz"] + params["Tx"]
     dt = Time[1]-Time[0]
     StepSamples = int(T/dt)
@@ -203,6 +205,66 @@ def IntergratedProperties(Tag,start,stop,inc,params):
         
     return SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr
 
+def WorkCal(Hx,Hz,Rho,Time,Tx,Tz,t):
+    T =Tx + Tz
+    n = int(np.floor(t/T))
+    r = t%T
+    workSum = 0 
+    TG = int(len(Time)/Np)
+    for i in range(1,n+1):
+        index1 = int(i*TG - 1)
+        index2 = int(TG*(i-(1/2)) - 1)
+        workSum += ((Hz-Hx)*(Rho[index1] - Rho[index2])).tr()
+    if 0 <= r < Tz: 
+        return workSum
+    elif Tz<=r<T:
+        finalIndex = int(TG*(n+(1/2))-1)
+        return workSum - ((Hz-Hx)*Rho[finalIndex]).tr()
+    
+def AlternativeIntrgation(params):
+    #This is an alternative way to calculate the integrated quantities that should be faster and more accurate
+    Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
+    print('Generating Initial State')
+    psi0 = qu.qload('limitstate')#InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
+    print('Initial State Generated')
+    Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
+    Entropy = []
+    Energy = []
+    Work = []
+    Heat = []
+    for i in range(len(Rho)):
+        Entropy.append(qu.entropy_vn(Rho[i]))
+        Energy.append((TimeDependence(Hz,Hx,Time[i])*Rho[i]).tr().real)
+        Work.append(WorkCal(Hx,Hz,Rho,Time,params["Tx"],params["Tz"],Time[i]).real)
+        Heat.append(Energy[i] - Work[i])
+    return Time, Entropy, Energy, Work, Heat
+
+def IntergratedProperties2(Tag,start,stop,inc,params):
+    
+    EndPeriodHeat = []
+    
+    EndPeriodWork = []
+    
+    EndPeriodEnergy = []
+
+    EndPeriodEntropy = []
+    SweepArr = np.arange(start,stop,inc)
+    N = len(SweepArr)
+    for i in range(N):
+        print('Loop {}/{}'.format(i+1,N))
+        params[Tag] = SweepArr[i]
+        Time,Entropy, Energy, Work, Heat = AlternativeIntrgation(params)
+        TG = int(len(Time)/Np)
+        
+        EndPeriodHeat.append(Heat[int(Np*TG)-1] - Heat[int((Np-1)*TG)-1])
+    
+        EndPeriodWork.append(Work[int(Np*TG)-1] - Work[int((Np-1)*TG)-1])
+    
+        EndPeriodEnergy.append(Energy[int(Np*TG)-1] - Energy[int((Np-1)*TG)-1])
+        
+        EndPeriodEntropy.append( Entropy[int((Np-1)*TG)+1]- Entropy[int(Np*TG)-1] )
+
+    return SweepArr,EndPeriodHeat,EndPeriodWork,EndPeriodEnergy,EndPeriodEntropy
 def InitialStateGenerator(params):
     psi0 = qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
     Time, Rho = TimeEvolver(8,0.1,psi0,params)
@@ -221,16 +283,23 @@ def CoherenceRemover(Qobj):
     NewObj = qu.Qobj(data,dimentions,shape)
     return NewObj
 
+def ZEvolutionCals(r0,params):
+    params["G"] = 20
+    Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
+    tlist = np.arange(0,1,0.05)
+    results = qu.mesolve(Hz, r0, tlist,LZ,[])
+    return results.states[-1
+                          ]
 if __name__ == "__main__":
     '''
     The required parameters from the highest level of simulation will be provided in a 
     dictionary and passed along. Closed system parameters listed first, then bath parameters
     For example considering the following
     '''
-    params = {"seed":42,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.5, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":2,"B":1}
+    params = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.1, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":10,"B":1}
     
     Np = 8 #Number of Periods 
-    TimeStep = 0.0005
+    TimeStep = 0.01
     T = params["Tz"] + params["Tx"]
     
     print('Generating Initial State')
@@ -239,11 +308,24 @@ if __name__ == "__main__":
     print('Initial State Generated')
     print('--------------')
     Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
-    psi0Therm = (-params["B"]*Hx).expm()/((-params["B"]*Hx).expm()).tr()
+    
     print('Evolving the system')
     Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
     print('System Evolved')
     print('--------------')
+    psi0Therm = (-params["B"]*Hx).expm()/((-params["B"]*Hx).expm()).tr()
+    rho_infty = psi0Therm
+    rho_inftyZ = ZEvolutionCals(rho_infty,params)
+    Fidthermal = []
+    FidDiagonal = []
+    for i in range(len(Rho)):
+        Fidthermal.append(qu.fidelity(Rho[i].tidyup(),rho_infty))
+        FidDiagonal.append(qu.fidelity(Rho[i].tidyup(),rho_inftyZ))
+    plt.plot(Time,Fidthermal,label = 'Thermal')
+    plt.plot(Time,FidDiagonal)
+    plt.legend()
+    plt.show()
+    
     
     print('Calculating Thrmodynamic Rates')
     TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
@@ -256,20 +338,8 @@ if __name__ == "__main__":
     PlottingWrapper(Time/T,DotU,"t/T",r"$\dot{U}(t)$")
     PlottingWrapper(Time/T,DotS,"t/T",r"$\dot{S}(t)$")
     
-    '''
-    To verify that the previous integration routine makes sense to some degree
-    I can calculate the change of internal energy and entropy via a different route 
-    and compare the results
     
-    Delta(U) = tr(H*rho)
-    Delta(S) = -tr(rho*ln(rho))
-    '''
-    EntropyTestArr = []
-    EnergyTestArr = []
-    for i in range(len(Rho)):
-        EntropyTestArr.append(qu.entropy_vn(Rho[i])-qu.entropy_vn(Rho[0]))
-        EnergyTestArr.append((TimeDependence(Hz,Hx,Time[i])*Rho[i]).tr() - (TimeDependence(Hz,Hx,Time[0])*Rho[0]).tr())
-    print('Calculating Integrated Quantities')
+    print('Calculating Approximate Integrated Quantities')
     PTime, DeltaQ = IntegrationRoutine(Time,DotQ,0,params)
     PTime,DeltaW = IntegrationRoutine(Time,DotW,0,params)
     PTime,DeltaU= IntegrationRoutine(Time,DotU,0,params)
@@ -277,18 +347,47 @@ if __name__ == "__main__":
     print('Done')
     print('--------------')
     
-    PlottingWrapper(PTime/T,DeltaQ,"t/T",r"$\Delta Q(t)$")
-    PlottingWrapper(PTime/T,DeltaW,"t/T",r"$\Delta W(t)$")
-    PlottingWrapper(PTime/T,DeltaU,"t/T",r"$\Delta U(t)$")
-    PlottingWrapper(PTime/T,DeltaS,"t/T",r"$\Delta S(t)$")
-    
-    plt.plot(PTime/T,DeltaS,'o')
-    plt.plot(Time/T,EntropyTestArr)
+    print("Calculating Integrated quants via direct methods")
+    Time,Entropy, Energy, Work, Heat = AlternativeIntrgation(params)
+    plt.plot(Time/T,Entropy)
+    plt.plot(PTime/T,DeltaS)
+    plt.xlabel(r"t/T")
+    plt.ylabel(r"$\Delta S$")
+    plt.show()
+    plt.plot(Time/T,Energy)
+    plt.plot(PTime/T,DeltaU)
+    plt.xlabel(r"t/T")
+    plt.ylabel(r"$\Delta U$")
+    plt.show()
+    plt.plot(Time/T,Work)
+    plt.plot(PTime/T,DeltaW)
+    plt.xlabel(r"t/T")
+    plt.ylabel(r"$\Delta W$")
+    plt.show()
+    plt.plot(Time/T,Heat)
+    plt.plot(PTime/T,DeltaQ)
+    plt.xlabel(r"t/T")
+    plt.ylabel(r"$\Delta Q$")
     plt.show()
     
-    plt.plot(PTime/T,DeltaU,'o')
-    plt.plot(Time/T,EnergyTestArr,'x')
-    plt.show()
+    #print(Work[-1]-Work[])
+    
+    '''
+    Now I will calculate the analytic expressions for the large gamma limit. To do this I need the thermal state of Hx, this state with not coherence in the 
+    z basis and the hamiltonions Hx,Hz
+    '''
+    
+    
+    WorkLimit = ((Hz-Hx)*(rho_infty-rho_inftyZ)).tr().real
+    HeatLimit = -WorkLimit
+    EnergyLimit = 0
+    EntropyLimit = qu.entropy_vn(rho_inftyZ) - qu.entropy_vn(rho_infty) #qu.entropy_relative(rho_infty,rho_inftyZ)+ qu.entropy_relative(rho_inftyZ,rho_infty)
+    print(WorkLimit)
+    print(HeatLimit)
+    print(EnergyLimit)
+    print(EntropyLimit)
+    
+    
     '''
     Not I want to be able to look at the integrated quantities over different periods of the evolution
     This routine should take a given set of system parameters and a period of interest
@@ -296,38 +395,28 @@ if __name__ == "__main__":
     '''
     
     print('Begin looping over different enviroment coupling strengths')
-    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties("G",0.000001,3.01,0.5,params)
+    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties2("G",0.00000001,10.01,0.5,params)
     
-    PlottingWrapper(SweepArr,HeatChangeArr[0],r"$\Gamma$",r"$\Delta Q$")
-    PlottingWrapper(SweepArr,WorkChangeArr[0],r"$\Gamma$",r"$\Delta W$")
-    PlottingWrapper(SweepArr,EnergyChangeArr[0],r"$\Gamma$",r"$\Delta U$")
-    PlottingWrapper(SweepArr,EntropyChangeArr[0],r"$\Gamma$",r"$\Delta S$")
+    AsyHeat = []
+    AsyWork = []
+    AsyEng = []
+    AsyEnt = []
+    for i in range(len(SweepArr)):
+        AsyHeat.append(HeatLimit)
+        AsyWork.append(WorkLimit)
+        AsyEng.append(EnergyLimit)
+        AsyEnt.append(EntropyLimit)
+        
+    plt.plot(SweepArr,HeatChangeArr,label = r"$\Delta Q$")
+    plt.plot(SweepArr,WorkChangeArr,label = r"$\Delta W$")
+    plt.plot(SweepArr,EnergyChangeArr,label = r"$\Delta U$")
+    plt.plot(SweepArr,EntropyChangeArr,label = r"$\Delta S$")
+    plt.plot(SweepArr,AsyHeat,"-")
+    plt.plot(SweepArr,AsyWork,"-")
+    plt.plot(SweepArr,AsyEng,"-")
+    plt.plot(SweepArr,AsyEnt,"-")
+    plt.legend()
+    plt.show()
     
-    PlottingWrapper(SweepArr,HeatChangeArr[1],r"$\Gamma$",r"$\Delta Q$")
-    PlottingWrapper(SweepArr,WorkChangeArr[1],r"$\Gamma$",r"$\Delta W$")
-    PlottingWrapper(SweepArr,EnergyChangeArr[1],r"$\Gamma$",r"$\Delta U$")
-    PlottingWrapper(SweepArr,EntropyChangeArr[1],r"$\Gamma$",r"$\Delta S$")
-    
-    PlottingWrapper(SweepArr,HeatChangeArr[2],r"$\Gamma$",r"$\Delta Q$")
-    PlottingWrapper(SweepArr,WorkChangeArr[2],r"$\Gamma$",r"$\Delta W$")
-    PlottingWrapper(SweepArr,EnergyChangeArr[2],r"$\Gamma$",r"$\Delta U$")
-    PlottingWrapper(SweepArr,EntropyChangeArr[2],r"$\Gamma$",r"$\Delta S$")
-    
-    
-    '''
-    Now I will calculate the analytic expressions for the large gamma limit. To do this I need the thermal state of Hx, this state with not coherence in the 
-    z basis and the hamiltonions Hx,Hz
-    '''
-    
-    rho_infty = psi0Therm
-    rho_inftyZ = CoherenceRemover(rho_infty)
-    
-    WorkLimit = ((Hz-Hx)*(rho_infty-rho_inftyZ)).tr()
-    HeatLimit = -WorkLimit
-    EnergyLimit = 0
-    EntropyLimit = qu.entropy_relative(rho_infty,rho_inftyZ)+ qu.entropy_relative(rho_inftyZ,rho_infty)
-    
-    print(WorkLimit)
-    print(HeatLimit)
-    print(EnergyLimit)
-    print(EntropyLimit)
+   
+   
