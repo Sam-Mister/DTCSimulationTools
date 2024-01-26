@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 from scipy import integrate
-Standardparams = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
+Standardparams = {"seed":42,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.001,"B":1}
 '''
 Now we have an array of time steps, an array of density operators at each time step,
 and static Qobjs for the Hamiltonians and the Liouvillians.
@@ -138,72 +138,52 @@ def AbslistDifference(Arr1,Arr2):
 
 def IntergratedProperties(Tag,start,stop,inc,params):
     #Tag is the string corresponding to the parameter that needs to be swept
-    #I calculate the change over a single period for the first,last and middle period
+    '''
+    This function works by calculating the derivatives of the thermodynamic quants 
+    and then integrating them. Due to the nature of numerical integration I use the 
+    samples of the derivatives to calculate the integrats at integer multiples of T.
+    This guarentees that there will be a goond number of samples for each calculation.
+    '''
     
-    FirstPeriodHeat = []
-    MiddlePeriodHeat = []
     EndPeriodHeat = []
-    
-    FirstPeriodWork = []
-    MiddlePeriodWork = []
     EndPeriodWork = []
-    
-    FirstPeriodEnergy = []
-    MiddlePeriodEnergy = []
     EndPeriodEnergy = []
-    
-    FirstPeriodEntropy = []
-    MiddlePeriodEntropy = []
     EndPeriodEntropy = []
+    
     SweepArr = np.arange(start,stop,inc)
     N = len(SweepArr)
+    #The non trivial initial state is generated before the loop and is loaded. 
+    psi0 = qu.qload('limitstate')
     for i in range(N):
         t0 = time.time()
         print('Loop {}/{}'.format(i+1,N))
-        params[Tag] = SweepArr[i]
+        params[Tag] = SweepArr[i] #Update the parameter that we wish to sweep over. 
         
-        Np = 8 #Number of Periods 
-        MidIndex = int(Np/2)
+        Np = 8 #Number of Periods # This is a little sloppy I will need to determine this value within the function to improve the robustness of the code
         FinalIndex = Np-1
-        TimeStep = 0.0005
+        TimeStep = 0.01
        
-        Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
-        print('Generating Initial State')
-        psi0 = qu.qload('limitstate')#InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
-        print('Initial State Generated')
-        Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
-        PeriodEnd = int(len(Time)/Np - 1) 
-        StepAmount = int(len(Time)/Np)
-        TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx)
+        Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params) # Generate the system operators for the given parameters
+        Time, Rho = TimeEvolver(Np,TimeStep,psi0,params) # Evlove the system
+        
+        TimeCrystalSignature,DotQ, DotW, DotU, DotS = ThrmodynamicRates(Time,Rho,Hz,Hx,LZ,LX,Sx) #Calculate the thermodynamic rates
     
-        PTime,DeltaQ = IntegrationRoutine(Time,DotQ,0,params)
-        FirstPeriodHeat.append(DeltaQ[1] - DeltaQ[0])
-        MiddlePeriodHeat.append(DeltaQ[MidIndex+1] - DeltaQ[MidIndex])
+        PTime,DeltaQ = IntegrationRoutine(Time,DotQ,0,params) # Determine the integrated properties 
         EndPeriodHeat.append(DeltaQ[FinalIndex+1] - DeltaQ[FinalIndex])
         
         PTime,DeltaW = IntegrationRoutine(Time,DotW,0,params)
-        FirstPeriodWork.append(DeltaW[1] - DeltaW[0])
-        MiddlePeriodWork.append(DeltaW[MidIndex+1] - DeltaW[MidIndex])
         EndPeriodWork.append(DeltaW[FinalIndex+1] - DeltaW[FinalIndex])
         
         PTime,DeltaU= IntegrationRoutine(Time,DotU,0,params)
-        FirstPeriodEnergy.append(DeltaU[1] - DeltaU[0])
-        MiddlePeriodEnergy.append(DeltaU[MidIndex+1] - DeltaU[MidIndex])
         EndPeriodEnergy.append(DeltaU[FinalIndex+1] - DeltaU[FinalIndex])
         
         PTime,DeltaS = IntegrationRoutine(Time,DotS,0,params)  
-        FirstPeriodEntropy.append(DeltaS[1] - DeltaS[0])
-        MiddlePeriodEntropy.append(DeltaS[MidIndex+1] - DeltaS[MidIndex])
         EndPeriodEntropy.append(DeltaS[FinalIndex+1] - DeltaS[FinalIndex])
         t1 = time.time()
         print('This loop took {:.2}mins'.format((t1-t0)/60))
         print('Approx {:.2} mins left'.format(((N-(i+1))*(t1-t0))/60))
-    HeatChangeArr = [FirstPeriodHeat,MiddlePeriodHeat,EndPeriodHeat]
-    WorkChangeArr = [FirstPeriodWork,MiddlePeriodWork,EndPeriodWork]
-    EnergyChangeArr = [FirstPeriodEnergy,MiddlePeriodEnergy,EndPeriodEnergy]
-    EntropyChangeArr = [FirstPeriodEntropy,MiddlePeriodEntropy,EndPeriodEntropy]
-        
-    return SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr
+     
+    return SweepArr, EndPeriodHeat, EndPeriodWork, EndPeriodEnergy, EndPeriodEntropy
 
 def WorkCal(Hx,Hz,Rho,Time,Tx,Tz,t):
     T =Tx + Tz
@@ -223,10 +203,14 @@ def WorkCal(Hx,Hz,Rho,Time,Tx,Tz,t):
     
 def AlternativeIntrgation(params):
     #This is an alternative way to calculate the integrated quantities that should be faster and more accurate
-    Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params)
-    print('Generating Initial State')
-    psi0 = qu.qload('limitstate')#InitialStateGenerator(Standardparams)#qu.tensor([qu.Qobj([[1/np.sqrt(2)],[1/np.sqrt(2)]]) for n in range(params["NumSpins"])])
-    print('Initial State Generated')
+    '''
+    This function works by using the closed form expressions for the entropy, energy and work.
+    Heat is calculated using the first law. Thus the first law must be valid for this method to work. 
+    This can first be verified with the standard integration method then this faster method can be used.
+    '''
+    Hz,Hx,LZ,LX,Sx,Sz,Sy = SystemOperators(params) #Generate system operators 
+    psi0 = qu.qload('limitstate')#Load initial state
+    
     Time, Rho = TimeEvolver(Np,TimeStep,psi0,params)
     Entropy = []
     Energy = []
@@ -262,7 +246,7 @@ def IntergratedProperties2(Tag,start,stop,inc,params):
     
         EndPeriodEnergy.append(Energy[int(Np*TG)-1] - Energy[int((Np-1)*TG)-1])
         
-        EndPeriodEntropy.append( Entropy[int((Np-1)*TG)+1]- Entropy[int(Np*TG)-1] )
+        EndPeriodEntropy.append( Entropy[int(Np*TG)-1]- Entropy[int((Np-1)*TG)-1] )
 
     return SweepArr,EndPeriodHeat,EndPeriodWork,EndPeriodEnergy,EndPeriodEntropy
 def InitialStateGenerator(params):
@@ -296,7 +280,7 @@ if __name__ == "__main__":
     dictionary and passed along. Closed system parameters listed first, then bath parameters
     For example considering the following
     '''
-    params = {"seed":42,"NumSpins":5, "Jmean":np.pi/4, "Jvar":0.5, "hmean":np.pi,"hvar":0.1, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":10,"B":1}
+    params = {"seed":64,"NumSpins":4, "Jmean":np.pi/4, "Jvar":0, "hmean":np.pi,"hvar":0, "ExternalField":0,"Tz":1,"Tx":1, "s":1,"G":0.00000001,"B":1}
     
     Np = 8 #Number of Periods 
     TimeStep = 0.01
@@ -381,7 +365,7 @@ if __name__ == "__main__":
     WorkLimit = ((Hz-Hx)*(rho_infty-rho_inftyZ)).tr().real
     HeatLimit = -WorkLimit
     EnergyLimit = 0
-    EntropyLimit = qu.entropy_vn(rho_inftyZ) - qu.entropy_vn(rho_infty) #qu.entropy_relative(rho_infty,rho_inftyZ)+ qu.entropy_relative(rho_inftyZ,rho_infty)
+    EntropyLimit = qu.entropy_vn(rho_infty) - qu.entropy_vn(rho_infty) #qu.entropy_relative(rho_infty,rho_inftyZ)+ qu.entropy_relative(rho_inftyZ,rho_infty)
     print(WorkLimit)
     print(HeatLimit)
     print(EnergyLimit)
@@ -395,7 +379,7 @@ if __name__ == "__main__":
     '''
     
     print('Begin looping over different enviroment coupling strengths')
-    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties2("G",0.00000001,10.01,0.5,params)
+    SweepArr, HeatChangeArr, WorkChangeArr, EnergyChangeArr, EntropyChangeArr = IntergratedProperties2("hmean",0,np.pi,0.2,params)
     
     AsyHeat = []
     AsyWork = []
@@ -411,10 +395,10 @@ if __name__ == "__main__":
     plt.plot(SweepArr,WorkChangeArr,label = r"$\Delta W$")
     plt.plot(SweepArr,EnergyChangeArr,label = r"$\Delta U$")
     plt.plot(SweepArr,EntropyChangeArr,label = r"$\Delta S$")
-    plt.plot(SweepArr,AsyHeat,"-")
-    plt.plot(SweepArr,AsyWork,"-")
-    plt.plot(SweepArr,AsyEng,"-")
-    plt.plot(SweepArr,AsyEnt,"-")
+    #plt.plot(SweepArr,AsyHeat,"-")
+    #plt.plot(SweepArr,AsyWork,"-")
+    #plt.plot(SweepArr,AsyEng,"-")
+    #plt.plot(SweepArr,AsyEnt,"-")
     plt.legend()
     plt.show()
     
